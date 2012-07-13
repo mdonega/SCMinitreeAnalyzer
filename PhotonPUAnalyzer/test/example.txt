@@ -1,0 +1,14 @@
+process.demo = cms.EDAnalyzer("PhotonPUAnalyzer",
+                              genParticlesProducer = cms.InputTag("genParticles"),
+                              doMC = cms.bool(True),
+                              reducedBarrelEcalRecHitCollection = cms.InputTag("reducedEcalRecHitsEB"),
+                              reducedEndcapEcalRecHitCollection = cms.InputTag("reducedEcalRecHitsEE"),
+                              OutputFile = cms.string("/shome/peruzzi/gunwithpu/pfclustering/CMSSW_5_3_1/src/job_output/outfile_pu"+str(options.pileup)+"_thrseed"+str(options.threshPFClusterSeedBarrel)+"_thrclus"+str(options.threshPFClusterBarrel)+"_phi"+str(options.phiwidthSuperCluster)+"_eta"+str(options.etawidthSuperCluster)+".root"),
+                              srcRho = cms.InputTag('kt6PFJets','rho'),
+                              srcSigma = cms.InputTag('kt6PFJets','sigma'),
+                              vertexProducer = cms.InputTag('offlinePrimaryVerticesWithBS'),
+                              SCProducer = cms.InputTag('particleFlowSuperClusterECAL:particleFlowSuperClusterECAL')
+                              )
+
+
+
