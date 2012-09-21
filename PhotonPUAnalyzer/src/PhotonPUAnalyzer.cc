@@ -402,16 +402,27 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
 
    if (!doElectrons_) coll_size = photonHandle->size(); else coll_size=electronHandle->size();
 
-   for (int index=0; index<coll_size; index++){
+   std::vector<OrderPair> ordered;
+   for (int i=0; i<coll_size; i++){
+     reco::SuperClusterRef SCIter;
+     if (!doElectrons_) SCIter = (*photonHandle)[i].superCluster();
+     else SCIter = (*electronHandle)[i].superCluster();
+     if (SCIter.isNull()) continue;
+     ordered.push_back(std::make_pair(SCIter->rawEnergy() * sin(SCIter->position().theta()),i));
+   }
+   std::sort(ordered.begin(),ordered.end(),indexComparator);
+
+
+   for (unsigned int orderindex=0; orderindex<ordered.size(); orderindex++){
+
+     int index = ordered.at(orderindex).second;
 
      bool matched=false;
 
      reco::SuperClusterRef SCIter;
      if (!doElectrons_) SCIter = (*photonHandle)[index].superCluster();
      else SCIter = (*electronHandle)[index].superCluster();
-     
      if (SCIter.isNull()) continue;
-
 
      //Event variables
      event_number = iEvent.id().event();
