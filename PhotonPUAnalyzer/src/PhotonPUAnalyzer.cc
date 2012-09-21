@@ -95,6 +95,16 @@
 #include "DataFormats/GeometryVector/interface/GlobalVector.h"
 #include "DataFormats/Common/interface/AssociationVector.h"
 
+#include "EGamma/EGammaAnalysisTools/interface/EGammaCutBasedEleId.h"
+#include "DataFormats/RecoCandidate/interface/IsoDeposit.h"
+#include "DataFormats/GsfTrackReco/interface/GsfTrack.h"
+#include "DataFormats/GsfTrackReco/interface/GsfTrackFwd.h"
+#include "DataFormats/EgammaCandidates/interface/GsfElectron.h"
+#include "DataFormats/EgammaCandidates/interface/GsfElectronFwd.h"
+#include "DataFormats/EgammaCandidates/interface/Conversion.h"
+#include "DataFormats/VertexReco/interface/Vertex.h"
+#include "DataFormats/VertexReco/interface/VertexFwd.h"
+#include "DataFormats/Common/interface/ValueMap.h"
 
 #include <Math/VectorUtil.h>
 
@@ -117,8 +127,10 @@ typedef math::XYZTLorentzVector LorentzVector;
 typedef math::XYZPoint Point;
 typedef math::XYZVector Vector;
 
-
 using namespace std;
+
+typedef std::vector< edm::Handle< edm::ValueMap<reco::IsoDeposit> > >   IsoDepositMaps;
+typedef std::vector< edm::Handle< edm::ValueMap<double> > >             IsoDepositVals;
 
 class PhotonPUAnalyzer : public edm::EDAnalyzer {
    public:
@@ -152,8 +164,12 @@ class PhotonPUAnalyzer : public edm::EDAnalyzer {
 
   edm::InputTag srcRho_;
   edm::InputTag srcSigma_;  
-  
 
+  edm::InputTag               conversionsInputTag_;
+  edm::InputTag               beamSpotInputTag_;
+  edm::InputTag               rhoIsoInputTag;
+  std::vector<edm::InputTag>  isoValInputTags_;
+  
   edm::InputTag vertexProducer_;
 
   edm::InputTag photonsProducer_;
@@ -182,12 +198,13 @@ class PhotonPUAnalyzer : public edm::EDAnalyzer {
   int event_ls;
   int event_SCindex;
   int event_nRecoVertex;
-
+  int event_genPU;
+  int event_genPUtrue;
+  
   int coll_size;
 
   float event_rho;
   float event_sigma;
-
 
   float pho_et;
   float pho_energy;
@@ -201,6 +218,15 @@ class PhotonPUAnalyzer : public edm::EDAnalyzer {
   float GenEta;
   float GenPhi;
 
+  int ele_looseID;
+  int ele_mediumID;
+  int ele_tightID;
+
+  float track_pt;
+  float track_eta;
+  float track_phi;
+
+  int pixelseed;
 
   float phoSC_GeomEta;
   float phoSC_GeomPhi;
@@ -268,6 +294,11 @@ PhotonPUAnalyzer::PhotonPUAnalyzer(const edm::ParameterSet& iConfig)
   reducedEndcapEcalRecHitCollection_ = iConfig.getParameter<edm::InputTag>("reducedEndcapEcalRecHitCollection");
   OutputFile_ = iConfig.getParameter<std::string>("OutputFile");
 
+  conversionsInputTag_    = iConfig.getParameter<edm::InputTag>("conversionsInputTag");
+  beamSpotInputTag_       = iConfig.getParameter<edm::InputTag>("beamSpotInputTag");
+  rhoIsoInputTag          = iConfig.getParameter<edm::InputTag>("rhoIsoInputTag");
+  isoValInputTags_        = iConfig.getParameter<std::vector<edm::InputTag> >("isoValInputTags");
+
   GenParticles_Phi = new TH1F("GenParticles_Phi","GenParticles_Phi",128,-3.2,+3.2);
   //  RecoParticles_Phi = new TH1F("RecoParticles_Phi","RecoParticles_Phi",128,-3.2,+3.2);
   //  n_RecoParticles = new TH1I("n_RecoParticles","n_RecoParticles",5,0,5);
@@ -293,6 +324,18 @@ PhotonPUAnalyzer::PhotonPUAnalyzer(const edm::ParameterSet& iConfig)
   myTree_->Branch("GenEta",&GenEta,"GenEta/F");
   myTree_->Branch("GenPhi",&GenPhi,"GenPhi/F");
 
+  myTree_->Branch("event_genPU",&event_genPU,"event_genPU/I");
+  myTree_->Branch("event_genPUtrue",&event_genPUtrue,"event_genPUtrue/I");
+
+  myTree_->Branch("ele_looseID",&ele_looseID,"ele_looseID/I");
+  myTree_->Branch("ele_mediumID",&ele_mediumID,"ele_mediumID/I");
+  myTree_->Branch("ele_tightID",&ele_tightID,"ele_tightID/I");
+
+  myTree_->Branch("track_pt",&track_pt,"track_pt/F");
+  myTree_->Branch("track_eta",&track_eta,"track_eta/F");
+  myTree_->Branch("track_phi",&track_phi,"track_phi/F");
+
+  myTree_->Branch("pixelseed",&pixelseed,"pixelseed/I");
 
   //  myTree_->Branch("pho_isEB",&pho_isEB,"pho_isEB/I");
   //  myTree_->Branch("pho_isEE",&pho_isEE,"pho_isEE/I");
@@ -363,7 +406,27 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
    //cout << "sigma="<<sigma<<endl;
    edm::Handle<reco::VertexCollection> vertexHandle;
    iEvent.getByLabel(vertexProducer_, vertexHandle);
+
+   // conversions
+   edm::Handle<reco::ConversionCollection> conversions_h;
+   iEvent.getByLabel(conversionsInputTag_, conversions_h);
+
+   // beam spot
+   edm::Handle<reco::BeamSpot> beamspot_h;
+   iEvent.getByLabel(beamSpotInputTag_, beamspot_h);
+   const reco::BeamSpot &beamSpot = *(beamspot_h.product());
+
+   // iso deposits
+   IsoDepositVals isoVals(isoValInputTags_.size());
+   for (size_t j = 0; j < isoValInputTags_.size(); ++j) {
+     iEvent.getByLabel(isoValInputTags_[j], isoVals[j]);
+   }
    
+   // rho for isolation
+   edm::Handle<double> rhoIso_h;
+   iEvent.getByLabel(rhoIsoInputTag, rhoIso_h);
+   double rhoIso = *(rhoIso_h.product());
+
    //Photon collection
    edm::Handle<reco::PhotonCollection> photonHandle;
    iEvent.getByLabel(photonsProducer_,photonHandle);
@@ -375,8 +438,24 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
    //MC truth
    edm::Handle <reco::GenParticleCollection> genParticles;
    if (doMC_){
+
+     edm::Handle<std::vector<PileupSummaryInfo> > pileupInfo;
+     iEvent.getByLabel("addPileupInfo", pileupInfo);
+     std::vector<PileupSummaryInfo>::const_iterator PVI;
+
+     for (PVI = pileupInfo->begin(); PVI !=pileupInfo->end(); ++PVI){
+       if( PVI->getBunchCrossing() == 0 ){ // in-time PU
+	 event_genPU  = PVI->getPU_NumInteractions();
+	 event_genPUtrue = PVI->getTrueNumInteractions();
+       }
+     }
+     
      iEvent.getByLabel( genParticlesProducer_, genParticles );
      //cout << "nGenParticles="<<genParticles->size()<<std::endl;
+   }
+   else {
+     event_genPU = -999;
+     event_genPUtrue = -999;
    }
 
    //Electron collection
@@ -495,6 +574,26 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
      }
 
 
+     pixelseed = (!doElectrons_) ? (*photonHandle)[index].hasPixelSeed() : -999;
+
+     track_pt =  (doElectrons_) ? (*electronHandle)[index].gsfTrack()->pt() : -999;
+     track_eta = (doElectrons_) ? (*electronHandle)[index].gsfTrack()->eta() : -999;
+     track_phi = (doElectrons_) ? (*electronHandle)[index].gsfTrack()->phi() : -999;
+
+     if (!doElectrons_) {
+       ele_looseID=-999;
+       ele_mediumID=-999;
+       ele_tightID=-999;
+     }
+     else {
+       reco::GsfElectronRef ele(electronHandle,index);
+       double iso_ch =  (*(isoVals)[0])[ele];
+       double iso_em = (*(isoVals)[1])[ele];
+       double iso_nh = (*(isoVals)[2])[ele];
+       ele_looseID = EgammaCutBasedEleId::PassWP(EgammaCutBasedEleId::LOOSE, ele, conversions_h, beamSpot, vertexHandle, iso_ch, iso_em, iso_nh, rhoIso) ? 1 : 0;
+       ele_mediumID = EgammaCutBasedEleId::PassWP(EgammaCutBasedEleId::MEDIUM, ele, conversions_h, beamSpot, vertexHandle, iso_ch, iso_em, iso_nh, rhoIso) ? 1 : 0;
+       ele_tightID = EgammaCutBasedEleId::PassWP(EgammaCutBasedEleId::TIGHT, ele, conversions_h, beamSpot, vertexHandle, iso_ch, iso_em, iso_nh, rhoIso) ? 1 : 0;
+     }
 
      event_SCindex = times_filled;
 

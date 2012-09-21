@@ -7,4 +7,5 @@
 <use name="RecoEgamma/EgammaTools"/>
 <use name="RecoEgamma/EgammaIsolationAlgos"/>
 <use name="Geometry/EcalAlgo"/>
+<use name="EGamma/EGammaAnalysisTools"/>
 <flags EDM_PLUGIN="1"/>
