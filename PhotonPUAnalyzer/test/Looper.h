@@ -129,14 +129,10 @@ Looper::Looper(TTree *tree) : fChain(0)
 {
 // if parameter tree is not specified (or zero), connect the file
 // used to generate this class and read the Tree.
-   if (tree == 0) {
-      TFile *f = (TFile*)gROOT->GetListOfFiles()->FindObject("DYJetsToLL_M_50_TuneZ2Star_8TeV_madgraph_tarball_Summer12_DR53X_PU_S10_START53_V7A_v1_AODSIM.root");
-      if (!f || !f->IsOpen()) {
-         f = new TFile("DYJetsToLL_M_50_TuneZ2Star_8TeV_madgraph_tarball_Summer12_DR53X_PU_S10_START53_V7A_v1_AODSIM.root");
-      }
-      f->GetObject("Tree",tree);
+   if (tree == 0) gDirectory->GetObject("Tree",tree);
 
-   }
+   if (!tree) { std::cout << "Error: tree not found" << std::endl; return;}     
+
    Init(tree);
 }
 
