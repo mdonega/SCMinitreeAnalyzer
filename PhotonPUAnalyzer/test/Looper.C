@@ -40,6 +40,10 @@ void Looper::Loop()
 
    Long64_t events = 0;
 
+   TH1F *histo_nrecvtx;
+   TH1F *histo_nrecvtx_norew;
+   TH1F *histo_rho;
+
    TH1F *histo_r9[2][n_templates_max+1];
    TH1F *histo_r25[2][n_templates_max+1];
    TH1F *histo_brem[2][n_templates_max+1];
@@ -47,6 +51,9 @@ void Looper::Loop()
    TH1F *histo_erecegen[2][n_templates_max+1];
    TH1F *histo_mass[2];
 
+   histo_nrecvtx = new TH1F("histo_nrecvtx","histo_nrecvtx",50,0,50);
+   histo_nrecvtx_norew = new TH1F("histo_nrecvtx_norew","histo_nrecvtx_norew",50,0,50);
+   histo_rho = new TH1F("histo_rho","histo_rho",100,0,20);
 
    for (int i=0; i<n_templates_max+1; i++){
      for (int j=0; j<2; j++){
@@ -60,7 +67,7 @@ void Looper::Loop()
    }
 
    for (int j=0; j<2; j++){
-     TString reg = (j==0) ? "EB" : "EE";
+     TString reg = (j==0) ? "EBEB" : "notEBEB";
      histo_mass[j] = new TH1F(Form("h_mass_%s",reg.Data()),Form("h_mass_%s",reg.Data()),100,81.2,101.2);
    }
 
@@ -121,25 +128,28 @@ void Looper::Loop()
      float mass = (el1+el2).M();
      if (fabs(mass-91.2)>10) continue;
 
+     float weight=GetWeight(v.at(0).event_nRecoVertex);
 
-
+     histo_nrecvtx_norew->Fill(v.at(0).event_nRecoVertex);
+     histo_nrecvtx->Fill(v.at(0).event_nRecoVertex,weight);
+     histo_rho->Fill(v.at(0).event_rho,weight);
 
      for (int i=0; i<2; i++){
        int reg = (fabs(v.at(i).phoSC_GeomEta)<1.44) ? 0 : 1;
        int binstofill[2] = {Choose_bin_eta(v.at(i).phoSC_GeomEta,reg),n_templates_max};
        for (int j=0; j<2; j++){
        int bin = binstofill[j];
-       histo_r9[reg][bin]->Fill(v.at(i).pho_r9);
-       histo_r25[reg][bin]->Fill(v.at(i).pho_e5x5/v.at(i).phoSC_RawEnergy);
-       if (v.at(i).pho_Brem!=-1) histo_brem[reg][bin]->Fill(v.at(i).pho_Brem);
-       histo_sieie[reg][bin]->Fill(v.at(i).pho_sigmaIetaIeta);
-       histo_erecegen[reg][bin]->Fill(v.at(i).phoSC_RawEnergyCetaCorr/v.at(i).GenEnergy);
+       histo_r9[reg][bin]->Fill(v.at(i).pho_r9,weight);
+       histo_r25[reg][bin]->Fill(v.at(i).pho_e5x5/v.at(i).phoSC_RawEnergy,weight);
+       if (v.at(i).pho_Brem!=-1) histo_brem[reg][bin]->Fill(v.at(i).pho_Brem,weight);
+       histo_sieie[reg][bin]->Fill(v.at(i).pho_sigmaIetaIeta,weight);
+       histo_erecegen[reg][bin]->Fill(v.at(i).phoSC_RawEnergyCetaCorr/v.at(i).GenEnergy,weight);
        }
      }
      
      {
        int Zreg = ((fabs(v.at(0).phoSC_GeomEta)<1.44) && (fabs(v.at(1).phoSC_GeomEta)<1.44)) ? 0 : 1;
-       histo_mass[Zreg]->Fill(mass);
+       histo_mass[Zreg]->Fill(mass,weight);
      }
 
      
@@ -152,6 +162,8 @@ void Looper::Loop()
    for (int j=0; j<2; j++){
      histo_mass[j]->Scale(1.0/histo_mass[j]->Integral());
      histo_mass[j]->Write();
+   }
+   for (int j=0; j<2; j++){
      for (int i=0; i<n_templates_max+1; i++){
        histo_r9[j][i]->Scale(1.0/histo_r9[j][i]->Integral());
        histo_r25[j][i]->Scale(1.0/histo_r25[j][i]->Integral());
@@ -159,12 +171,17 @@ void Looper::Loop()
        histo_sieie[j][i]->Scale(1.0/histo_sieie[j][i]->Integral());
        histo_erecegen[j][i]->Scale(1.0/histo_erecegen[j][i]->Integral());
      }
-     for (int i=0; i<n_templates_max+1; i++) histo_r9[j][i]->Write();
-     for (int i=0; i<n_templates_max+1; i++) histo_r25[j][i]->Write();
-     for (int i=0; i<n_templates_max+1; i++) histo_brem[j][i]->Write();
-     for (int i=0; i<n_templates_max+1; i++) histo_sieie[j][i]->Write();
-     for (int i=0; i<n_templates_max+1; i++) histo_erecegen[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) if (histo_r9[j][i]->GetEntries()>0) histo_r9[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) if (histo_r25[j][i]->GetEntries()>0) histo_r25[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) if (histo_brem[j][i]->GetEntries()>0) histo_brem[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) if (histo_sieie[j][i]->GetEntries()>0) histo_sieie[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) if (histo_erecegen[j][i]->GetEntries()>0) histo_erecegen[j][i]->Write();
    }
+
+   histo_nrecvtx_norew->Write();
+   histo_nrecvtx->Write();
+   histo_rho->Write();
+
 
    f->Close();
 

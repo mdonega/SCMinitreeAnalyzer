@@ -111,7 +111,7 @@ public :
    TBranch        *b_pho_phiWidth;   //!
    TBranch        *b_pho_Brem;   //!
 
-   Looper(TTree *tree=0);
+   Looper(TString datafile, TString mcfile);
    virtual ~Looper();
    //   virtual Int_t    Cut(Long64_t entry);
    virtual Int_t    GetEntry(Long64_t entry);
@@ -122,7 +122,11 @@ public :
    virtual void     Show(Long64_t entry = -1);
 
    Int_t Choose_bin_eta(float eta, int region);
+   Float_t GetWeight(int nvtx);
 
+   void SetupPUReweighting(TString datafile, TString mcfile);
+   bool purewsetup;
+   TH1F histo_purew;
 };
 
 static const int n_templates_EB=7;
@@ -134,15 +138,51 @@ float binsdef_single_gamma_EE_eta[n_templates_EE+1]={1.56,1.653,1.8,2,2.2,2.5};
 #endif
 
 #ifdef Looper_cxx
-Looper::Looper(TTree *tree) : fChain(0) 
+
+Float_t Looper::GetWeight(int nvtx){
+  if (!purewsetup) return -999;
+  return histo_purew.GetBinContent(histo_purew.FindBin(nvtx));
+}
+
+void Looper::SetupPUReweighting(TString datafile, TString mcfile){
+
+  TFile *f1 = new TFile(datafile.Data(),"read");
+  TFile *f2 = new TFile(mcfile.Data(),"read");
+
+  if (f1->IsZombie() || f2->IsZombie()){
+    std::cout << "Error in PU reweighting files" << std::endl;
+    return;
+  }
+
+  TH1F *hdata;
+  TH1F *hmc;
+  f1->GetObject("histo_nrecvtx_norew",hdata);
+  f2->GetObject("histo_nrecvtx_norew",hmc);
+
+  hdata->Sumw2();
+  hmc->Sumw2();
+
+  hdata->Scale(1.0/hdata->Integral());
+  hmc->Scale(1.0/hmc->Integral());
+ 
+  hdata->Divide(hmc);
+
+  hdata->Copy(histo_purew);
+  purewsetup=1;
+}
+
+Looper::Looper(TString datafile, TString mcfile) : fChain(0) 
 {
 // if parameter tree is not specified (or zero), connect the file
 // used to generate this class and read the Tree.
-   if (tree == 0) gDirectory->GetObject("Tree",tree);
 
-   if (!tree) { std::cout << "Error: tree not found" << std::endl; return;}     
+  TTree *tree;
+  gDirectory->GetObject("Tree",tree);
+  Init(tree);
+  
+  purewsetup=0;
+  SetupPUReweighting(datafile,mcfile);
 
-   Init(tree);
 }
 
 Looper::~Looper()
