@@ -38,9 +38,39 @@ void Looper::Loop()
 
    Long64_t jentry = 0;
 
-   TH1F *histo = new TH1F("h","h",200,50,150);
+   Long64_t events = 0;
 
-   do {
+   TH1F *histo_r9[2][n_templates_max+1];
+   TH1F *histo_r25[2][n_templates_max+1];
+   TH1F *histo_brem[2][n_templates_max+1];
+   TH1F *histo_sieie[2][n_templates_max+1];
+   TH1F *histo_erecegen[2][n_templates_max+1];
+   TH1F *histo_mass[2];
+
+
+   for (int i=0; i<n_templates_max+1; i++){
+     for (int j=0; j<2; j++){
+       TString reg = (j==0) ? "EB" : "EE";
+       histo_r9[j][i] = new TH1F(Form("h_r9_%s_b%d",reg.Data(),i),Form("h_r9_%s_b%d",reg.Data(),i),130*4,0,1.3);
+       histo_r25[j][i] = new TH1F(Form("h_r25_%s_b%d",reg.Data(),i),Form("h_r25_%s_b%d",reg.Data(),i),130*4,0,1.3);
+       histo_brem[j][i] = new TH1F(Form("h_brem_%s_b%d",reg.Data(),i),Form("h_brem_%s_b%d",reg.Data(),i),100,0,10);
+       histo_sieie[j][i] = new TH1F(Form("h_sieie_%s_b%d",reg.Data(),i),Form("h_sieie_%s_b%d",reg.Data(),i),360,0,0.045);
+       histo_erecegen[j][i] = new TH1F(Form("h_erecegen_%s_b%d",reg.Data(),i),Form("h_erecegen_%s_b%d",reg.Data(),i),130*4,0,1.3);
+     }
+   }
+
+   for (int j=0; j<2; j++){
+     TString reg = (j==0) ? "EB" : "EE";
+     histo_mass[j] = new TH1F(Form("h_mass_%s",reg.Data()),Form("h_mass_%s",reg.Data()),100,81.2,101.2);
+   }
+
+
+   do { // start event loop
+
+     events++;
+     if (events%100000==0) std::cout << "Processing event " << events << std::endl;
+
+     //     if (events>=100000) break;
 
      std::vector<ParticleObject> v;
 
@@ -68,8 +98,12 @@ void Looper::Loop()
 
      for (vector<ParticleObject>::iterator it = v.begin(); it != v.end(); ){
        bool pass=1;
-       //       if (!(it->ele_tightID)) pass=0;
-       //       if (fabs(it->phoSC_GeomEta)>1.0) pass=0;
+       if (!(it->ele_tightID)) pass=0;
+
+       float eta = fabs(it->phoSC_GeomEta);
+       if (eta>=1.44 && eta<1.56) pass=0;
+       if (eta>=2.5) pass=0;
+       //       if (fabs(it->phoSC_GeomEta)>1.44) pass=0;
        //       if (it->pho_r9<0.94) pass=0;
        if (!pass) it=v.erase(it); else it++;
      }
@@ -80,13 +114,60 @@ void Looper::Loop()
      TLorentzVector el1;
      TLorentzVector el2;
      if (v.size()<2) continue;
+     v.resize(2);
      el1.SetPtEtaPhiM(v.at(0).phoSC_RawEtCetaCorr,v.at(0).phoSC_GeomEta,v.at(0).phoSC_GeomPhi,0.51);
      el2.SetPtEtaPhiM(v.at(1).phoSC_RawEtCetaCorr,v.at(1).phoSC_GeomEta,v.at(1).phoSC_GeomPhi,0.51);
-     histo->Fill((el1+el2).M());
+
+     float mass = (el1+el2).M();
+     if (fabs(mass-91.2)>10) continue;
+
+
+
+
+     for (int i=0; i<2; i++){
+       int reg = (fabs(v.at(i).phoSC_GeomEta)<1.44) ? 0 : 1;
+       int binstofill[2] = {Choose_bin_eta(v.at(i).phoSC_GeomEta,reg),n_templates_max};
+       for (int j=0; j<2; j++){
+       int bin = binstofill[j];
+       histo_r9[reg][bin]->Fill(v.at(i).pho_r9);
+       histo_r25[reg][bin]->Fill(v.at(i).pho_e5x5/v.at(i).phoSC_RawEnergy);
+       if (v.at(i).pho_Brem!=-1) histo_brem[reg][bin]->Fill(v.at(i).pho_Brem);
+       histo_sieie[reg][bin]->Fill(v.at(i).pho_sigmaIetaIeta);
+       histo_erecegen[reg][bin]->Fill(v.at(i).phoSC_RawEnergyCetaCorr/v.at(i).GenEnergy);
+       }
+     }
+     
+     {
+       int Zreg = ((fabs(v.at(0).phoSC_GeomEta)<1.44) && (fabs(v.at(1).phoSC_GeomEta)<1.44)) ? 0 : 1;
+       histo_mass[Zreg]->Fill(mass);
+     }
+
      
    } // end event loop
    while (true);
 
-   histo->Draw();
+
+   TFile *f = new TFile("output.root","recreate");
+   f->cd();
+   for (int j=0; j<2; j++){
+     histo_mass[j]->Scale(1.0/histo_mass[j]->Integral());
+     histo_mass[j]->Write();
+     for (int i=0; i<n_templates_max+1; i++){
+       histo_r9[j][i]->Scale(1.0/histo_r9[j][i]->Integral());
+       histo_r25[j][i]->Scale(1.0/histo_r25[j][i]->Integral());
+       histo_brem[j][i]->Scale(1.0/histo_brem[j][i]->Integral());
+       histo_sieie[j][i]->Scale(1.0/histo_sieie[j][i]->Integral());
+       histo_erecegen[j][i]->Scale(1.0/histo_erecegen[j][i]->Integral());
+     }
+     for (int i=0; i<n_templates_max+1; i++) histo_r9[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) histo_r25[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) histo_brem[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) histo_sieie[j][i]->Write();
+     for (int i=0; i<n_templates_max+1; i++) histo_erecegen[j][i]->Write();
+   }
+
+   f->Close();
+
+
 
 } // end function

@@ -120,7 +120,16 @@ public :
    virtual void     Loop();
    virtual Bool_t   Notify();
    virtual void     Show(Long64_t entry = -1);
+
+   Int_t Choose_bin_eta(float eta, int region);
+
 };
+
+static const int n_templates_EB=7;
+static const int n_templates_EE=5;
+static const int n_templates_max=7;
+float binsdef_single_gamma_EB_eta[n_templates_EB+1]={0,0.2,0.4,0.6,0.8,1,1.2,1.44};
+float binsdef_single_gamma_EE_eta[n_templates_EE+1]={1.56,1.653,1.8,2,2.2,2.5};
 
 #endif
 
@@ -243,4 +252,32 @@ void Looper::Show(Long64_t entry)
 //// returns -1 otherwise.
 //   return 1;
 //}
+
+Int_t Looper::Choose_bin_eta(float eta, int region){
+
+  eta=fabs(eta);
+
+  int index;
+
+  float *cuts=NULL;
+
+  if (region==0) {cuts=binsdef_single_gamma_EB_eta; index=n_templates_EB;}
+  if (region==1) {cuts=binsdef_single_gamma_EE_eta; index=n_templates_EE;}
+
+  assert (cuts!=NULL);
+  assert (index!=0);
+
+  if (eta<cuts[0]){
+    std::cout << "WARNING: called bin choice for out-of-range value " << eta << " cuts[0]=" << cuts[0] << std::endl;
+    return -999;
+  }
+
+  for (int i=0; i<index; i++) if ((eta>=cuts[i]) && (eta<cuts[i+1])) return i;
+
+  std::cout << "WARNING: called bin choice for out-of-range value " << eta << std::endl;
+  return -999;
+
+};
+
+
 #endif // #ifdef Looper_cxx
