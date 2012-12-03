@@ -13,7 +13,7 @@
 //
 // Original Author:  Nicolas Pierre Chanon,32 2-C13,+41227674539,
 //         Created:  Tue Mar  8 12:23:45 CET 2011
-// $Id: PhotonPUAnalyzer.cc,v 1.3 2012/07/13 10:04:10 peruzzi Exp $
+// $Id: PhotonPUAnalyzer.cc,v 1.4 2012/09/21 15:36:10 peruzzi Exp $
 //
 //
 
@@ -235,6 +235,7 @@ class PhotonPUAnalyzer : public edm::EDAnalyzer {
   float phoSC_RawEt;
   float phoSC_RawEtCetaCorr;
   float phoSC_RawEnergyCetaCorr;
+  float phoSC_correctedenergy;
 
   //photon tags
   int pho_isEB;
@@ -246,7 +247,8 @@ class PhotonPUAnalyzer : public edm::EDAnalyzer {
   int pho_isInEBEEGap;
 
   //photon Id
-  float pho_r9;
+  float phoSC_r9;
+  float pho_objectr9;
   float pho_sigmaIetaIeta;
   float pho_e1x5 ;
   float pho_e2x5 ;
@@ -344,17 +346,22 @@ PhotonPUAnalyzer::PhotonPUAnalyzer(const edm::ParameterSet& iConfig)
   myTree_->Branch("pho_isInEtaCrack",&pho_isInEtaCrack,"pho_isInEtaCrack/I");
   myTree_->Branch("pho_isInEBEEGap",&pho_isInEBEEGap,"pho_isInEBEEGap/I");
 
+  myTree_->Branch("pho_energy",&pho_energy,"pho_energy/F");
+  myTree_->Branch("pho_et",&pho_et,"pho_et/F");
+
   myTree_->Branch("phoSC_energy",&phoSC_energy,"phoSC_energy/F");
   myTree_->Branch("phoSC_RawEnergy",&phoSC_RawEnergy,"phoSC_RawEnergy/F");
   myTree_->Branch("phoSC_et",&phoSC_et,"phoSC_et/F");
   myTree_->Branch("phoSC_RawEt",&phoSC_RawEt,"phoSC_RawEt/F");
   myTree_->Branch("phoSC_RawEtCetaCorr",&phoSC_RawEtCetaCorr,"phoSC_RawEtCetaCorr/F");
   myTree_->Branch("phoSC_RawEnergyCetaCorr",&phoSC_RawEnergyCetaCorr,"phoSC_RawEnergyCetaCorr/F");
+  myTree_->Branch("phoSC_correctedenergy",&phoSC_correctedenergy,"phoSC_correctedenergy/F");
 
   myTree_->Branch("phoSC_GeomEta", &phoSC_GeomEta, "phoSC_GeomEta/F");
   myTree_->Branch("phoSC_GeomPhi", &phoSC_GeomPhi, "phoSC_GeomPhi/F");
 
-  myTree_->Branch("pho_r9",&pho_r9,"pho_r9/F");
+  myTree_->Branch("phoSC_r9",&phoSC_r9,"phoSC_r9/F");
+  myTree_->Branch("pho_objectr9",&pho_objectr9,"pho_objectr9/F");
   myTree_->Branch("pho_sigmaIetaIeta",&pho_sigmaIetaIeta,"pho_sigmaIetaIeta/F");
   //  myTree_->Branch("pho_e1x5",&pho_e1x5,"pho_e1x5/F");
   //  myTree_->Branch("pho_e2x5",&pho_e2x5,"pho_e2x5/F");
@@ -512,9 +519,23 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
      event_sigma=sigma;
      event_nRecoVertex=vertexHandle->size();
 
+     if (!doElectrons_) {
+       pho_energy = (*photonHandle)[index].energy();
+       pho_et = pho_energy / TMath::CosH((*photonHandle)[index].eta());
+       pho_objectr9 = (*photonHandle)[index].r9();
+     }
+     else {
+       pho_energy = (*electronHandle)[index].energy();
+       pho_et = pho_energy / TMath::CosH((*electronHandle)[index].eta());
+       pho_objectr9 = (*electronHandle)[index].r9();
+     }
+
      //SC default
      phoSC_energy = SCIter->energy();
      phoSC_et = SCIter->energy() * sin(SCIter->position().theta());
+
+     // Our corrections (+crack+local): for photons is object energy (SC is electron corrected), for electrons is SC energy (object has track info)
+     phoSC_correctedenergy = (!doElectrons_) ? pho_energy : phoSC_energy;
 
      //SC Raw
      phoSC_RawEnergy = SCIter->rawEnergy();
@@ -539,7 +560,9 @@ PhotonPUAnalyzer::analyze(const edm::Event& iEvent, const edm::EventSetup& iSetu
      const reco::CaloClusterPtr phoSeed = SCIter->seed();
      pho_e3x3 = lazyTools->e3x3(*phoSeed);
 
-     pho_r9 = pho_e3x3/phoSC_RawEnergy;
+
+     phoSC_r9 = pho_e3x3/phoSC_RawEnergy;
+
      pho_e5x5 = lazyTools->e5x5(*phoSeed);
      pho_etaWidth = SCIter->etaWidth();
      pho_phiWidth = SCIter->phiWidth();
